@@ -260,6 +260,8 @@ pub fn require_measurement_of(raw: &[u8], vhd: &str, source: &str) -> anyhow::Re
 pub struct InitInputs<'a> {
     pub name: &'a str,
     pub image: ImageRelease,
+    /// Which of the image's measurements assets is copied in, `azure-tdx` or `gcp-tdx`.
+    pub attestation_type: &'a str,
     pub measurements: Option<&'a str>,
     pub reth_genesis: Option<&'a str>,
     pub summit_genesis: Option<&'a str>,
@@ -372,11 +374,15 @@ pub async fn init_network_dir(
     }
     let opened = OpenedRelease::open(inputs.image.clone()).await?;
 
-    let measurements_asset = opened.record.measurements_asset(DEFAULT_ATTESTATION_TYPE)?;
+    let measurements_asset = opened.record.measurements_asset(inputs.attestation_type)?;
     let (measurements, measurements_source) =
         input_from(client, &opened, inputs.measurements, measurements_asset).await?;
     require_measurement_id(&measurements, &measurements_source)?;
-    require_measurement_of(&measurements, &opened.record.vhd(), &measurements_source)?;
+    require_measurement_of(
+        &measurements,
+        &opened.record.artifact(inputs.attestation_type)?,
+        &measurements_source,
+    )?;
     let (reth_genesis, reth_source) = input_from(
         client,
         &opened,
@@ -490,9 +496,15 @@ pub struct InitArgs {
     /// The image's measurements (or a promoted policy; local path or https://
     /// URL), copied in as inputs/measurements.json — the PCRs of a real
     /// image, never generated, and stamped for the image --image-json names.
-    /// Default: the image's measurements asset.
+    /// Default: the image's measurements asset for --attestation-type.
     #[arg(long, value_name = "PATH_OR_URL")]
     pub measurements: Option<String>,
+
+    /// Platform the nodes attest on, azure-tdx or gcp-tdx: which of the
+    /// image's measurements assets is copied in, and whether they must be
+    /// stamped for its VHD or its tarball.
+    #[arg(long, value_name = "TYPE", default_value = DEFAULT_ATTESTATION_TYPE)]
+    pub attestation_type: String,
 
     /// Authored summit genesis (local path or https:// URL), copied in
     /// verbatim except that an empty namespace is filled with <name>. Every
@@ -608,6 +620,7 @@ async fn run_with(
         &InitInputs {
             name: &name,
             image,
+            attestation_type: &args.attestation_type,
             measurements: args.measurements.as_deref(),
             reth_genesis: args.reth_genesis.as_deref(),
             summit_genesis: args.summit_genesis.as_deref(),
@@ -799,6 +812,7 @@ mod tests {
             &fetch_client().unwrap(),
             &loose.out,
             &InitInputs {
+                attestation_type: DEFAULT_ATTESTATION_TYPE,
                 name: "testnet-1",
                 image: loose.image.clone(),
                 measurements: None,
@@ -822,6 +836,7 @@ mod tests {
             &fetch_client().unwrap(),
             out,
             &InitInputs {
+                attestation_type: DEFAULT_ATTESTATION_TYPE,
                 name: "testnet-1",
                 image: release,
                 measurements,
@@ -1160,6 +1175,7 @@ mod tests {
         // reached.
         let unreadable = InitInputs {
             name: "testnet-1",
+            attestation_type: DEFAULT_ATTESTATION_TYPE,
             image: ImageRelease::beside("/nonexistent/image.json").unwrap(),
             measurements: None,
             reth_genesis: None,
