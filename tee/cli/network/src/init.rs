@@ -831,12 +831,22 @@ mod tests {
         out: &NetworkDir,
         overrides: (Option<&str>, Option<&str>, Option<&str>),
     ) -> anyhow::Result<Vec<PathBuf>> {
+        init_as(DEFAULT_ATTESTATION_TYPE, release, out, overrides).await
+    }
+
+    /// `init --image-json --attestation-type`, against `release` and with `overrides`.
+    async fn init_as(
+        attestation_type: &str,
+        release: ImageRelease,
+        out: &NetworkDir,
+        overrides: (Option<&str>, Option<&str>, Option<&str>),
+    ) -> anyhow::Result<Vec<PathBuf>> {
         let (reth_genesis, measurements, summit_genesis) = overrides;
         init_network_dir(
             &fetch_client().unwrap(),
             out,
             &InitInputs {
-                attestation_type: DEFAULT_ATTESTATION_TYPE,
+                attestation_type,
                 name: "testnet-1",
                 image: release,
                 measurements,
@@ -847,6 +857,80 @@ mod tests {
             false,
         )
         .await
+    }
+
+    /// `--attestation-type gcp-tdx` copies in the image's gcp-tdx measurements,
+    /// stamped for its tarball; the default still takes the Azure ones.
+    #[tokio::test]
+    async fn gcp_tdx_takes_the_measurements_stamped_for_the_tarball() {
+        use crate::image::tests::{TAG, release_files, serve_release, with_gcp_target};
+
+        let dir = tempfile::tempdir().unwrap();
+        let files = with_gcp_target(release_files(TAG), TAG);
+        let (_server, release) = serve_release(TAG, files.clone());
+        let gcp = NetworkDir::new(dir.path().join("gcp"));
+        init_as("gcp-tdx", release.clone(), &gcp, (None, None, None))
+            .await
+            .unwrap();
+        assert_eq!(
+            std::fs::read(gcp.input_measurements()).unwrap(),
+            files["measurements.gcp-tdx.json"]
+        );
+        let azure = NetworkDir::new(dir.path().join("azure"));
+        init_as(
+            DEFAULT_ATTESTATION_TYPE,
+            release,
+            &azure,
+            (None, None, None),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            std::fs::read(azure.input_measurements()).unwrap(),
+            files["measurements.azure-tdx.json"]
+        );
+    }
+
+    /// Under gcp-tdx a measurements override must be stamped for the
+    /// tarball, so the image's own VHD measurements are refused by name.
+    #[tokio::test]
+    async fn gcp_tdx_refuses_measurements_stamped_for_the_vhd() {
+        use crate::image::tests::{TAG, local_release, release_files, with_gcp_target};
+
+        let dir = tempfile::tempdir().unwrap();
+        let build = dir.path().join("build");
+        let (_image_json, release) =
+            local_release(&build, &with_gcp_target(release_files(TAG), TAG));
+        let vhd_measurements = build.join("measurements.azure-tdx.json");
+        let out = NetworkDir::new(dir.path().join("gcp"));
+        let err = init_as(
+            "gcp-tdx",
+            release,
+            &out,
+            (None, Some(s(&vhd_measurements)), None),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains(&format!("measures {TAG}.vhd, not {TAG}.tar.gz")),
+            "{err}"
+        );
+    }
+
+    /// An image published for Azure alone cannot found a gcp-tdx network.
+    #[tokio::test]
+    async fn gcp_tdx_needs_the_image_published_for_gcp() {
+        use crate::image::tests::{TAG, release_files, serve_release};
+
+        let dir = tempfile::tempdir().unwrap();
+        let (_server, release) = serve_release(TAG, release_files(TAG));
+        let out = NetworkDir::new(dir.path().join("gcp"));
+        let err = init_as("gcp-tdx", release, &out, (None, None, None))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not published for gcp-tdx"), "{err}");
     }
 
     /// One release supplies every input, and image.json is copied in as the
