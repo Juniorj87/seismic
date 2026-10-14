@@ -36,6 +36,7 @@
 //! written to `nodes/<name>.init-config.toml` beside `--manifest` before its
 //! POST, as the record of what it booted with and a body `curl` can replay.
 
+use std::cell::OnceCell;
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -45,8 +46,8 @@ use anyhow::{Context as _, bail};
 use base64::Engine as _;
 use clap::Args;
 use clap_complete::ArgValueCandidates;
-use seismic_tee_common::{Artifact, Manifest, NetworkDir};
-use seismic_tee_context::complete;
+use seismic_tee_common::{Artifact, Descriptors, Manifest, NetworkDir};
+use seismic_tee_context::{Context, Selected, complete, echo, read_nodes};
 use sha2::{Digest as _, Sha256};
 use tdx_init_config::{DomainConfig, InitConfig, NetworkConfig, NodeConfig};
 
@@ -220,9 +221,7 @@ pub fn write_record(path: &Path, rendered: &str) -> anyhow::Result<()> {
 
 /// What a `configure` run is about to do, decoded for a human.
 pub struct Preview<'a> {
-    /// Where the node table came from ([`CohortArgs::source`]): named on the
-    /// first line, beside the network, so a stale context shows.
-    pub table: &'a str,
+    pub table: &'a TableSource,
     pub manifest_path: &'a Path,
     pub manifest: &'a Manifest,
     pub reth_genesis: &'a Artifact,
@@ -566,6 +565,90 @@ pub(crate) fn remedy(args: &ConfigureArgs) -> Remedy {
             .map(|dir| format!(" {}", dir.root().display()))
             .unwrap_or_default(),
         appraisal: retry_flags(&args.policy_source, &args.verifier),
+    }
+}
+
+/// Where a `configure` run's manifest and node table come from: each its own
+/// flag, else the selected context network.
+///
+/// The context file is read the first time an input falls back to it, and
+/// never again: with both `--node` and `--manifest` given it is never read,
+/// so the command line is a complete record of what the run acted on. Each
+/// input is resolved where the run first needs it, so a missing manifest
+/// still fails before the node table is read.
+pub(crate) struct Inputs<'a> {
+    args: &'a ConfigureArgs,
+    config: Option<&'a Path>,
+    context: OnceCell<Context>,
+}
+
+impl<'a> Inputs<'a> {
+    pub fn new(args: &'a ConfigureArgs, config: Option<&'a Path>) -> Self {
+        Self {
+            args,
+            config,
+            context: OnceCell::new(),
+        }
+    }
+
+    /// `--manifest`, else the selected network's.
+    pub fn manifest(&self) -> anyhow::Result<PathBuf> {
+        match &self.args.manifest {
+            Some(path) => Ok(path.clone()),
+            None => self.selected("--manifest")?.manifest(),
+        }
+    }
+
+    /// The context network whose directory holds the manifest; `None` under
+    /// `--manifest`, which may name a directory no network is registered
+    /// for.
+    pub fn network(&self) -> anyhow::Result<Option<String>> {
+        if self.args.manifest.is_some() {
+            return Ok(None);
+        }
+        Ok(Some(self.selected("--manifest")?.selection.network))
+    }
+
+    /// `--node FILE`, else the selected network's node table, echoed.
+    pub fn table(&self) -> anyhow::Result<(Descriptors, TableSource)> {
+        if let Some(path) = &self.args.cohort.node {
+            return Ok((read_nodes(path, "--node")?, TableSource::File(path.clone())));
+        }
+        let selected = self.selected("--node")?;
+        let nodes = selected.nodes()?;
+        echo(&selected.selection, &format!("{} node(s)", nodes.len()));
+        let source = TableSource::Context(selected.selection.network.clone());
+        Ok((nodes.clone(), source))
+    }
+
+    /// The selected network, standing in for `flag`, which was not given.
+    fn selected(&self, flag: &str) -> anyhow::Result<Selected<'_>> {
+        self.context()?.select_for(&self.args.cohort.context, flag)
+    }
+
+    fn context(&self) -> anyhow::Result<&Context> {
+        if let Some(context) = self.context.get() {
+            return Ok(context);
+        }
+        let context = Context::load(self.config)?;
+        Ok(self.context.get_or_init(|| context))
+    }
+}
+
+/// Where the node table came from, named in the preview beside the network
+/// so a stale context shows.
+#[derive(Debug)]
+pub enum TableSource {
+    File(PathBuf),
+    Context(String),
+}
+
+impl std::fmt::Display for TableSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::File(path) => write!(f, "--node {}", path.display()),
+            Self::Context(network) => write!(f, "context {network}"),
+        }
     }
 }
 
@@ -1035,7 +1118,7 @@ mod tests {
             rest: vec![planned("beta", Up::Awaiting), planned("gamma", Up::NotUp)],
         };
         let text = render_preview(&Preview {
-            table: "context devnet-1",
+            table: &TableSource::Context("devnet-1".to_string()),
             manifest_path: Path::new("/nets/devnet/network-manifest.json"),
             manifest: &manifest,
             reth_genesis: &reth_genesis,
@@ -1088,7 +1171,7 @@ mod tests {
         let skipped = ["alpha".to_string()];
         let bootnodes = [bootnode()];
         let text = render_preview(&Preview {
-            table: "context devnet-1",
+            table: &TableSource::Context("devnet-1".to_string()),
             manifest_path: Path::new("/nets/devnet/network-manifest.json"),
             manifest: &manifest,
             reth_genesis: &reth_genesis,
@@ -1172,5 +1255,107 @@ mod tests {
         // And it is the document tdx-init would take.
         let reparsed: InitConfig = toml::from_str(&rendered).unwrap();
         assert_eq!(reparsed.network.bootnodes, [bootnode()]);
+    }
+
+    const CONTEXT: &str = r#"
+current = "devnet-1"
+
+[networks.devnet-1]
+dir = "/nets/devnet-1"
+
+[networks.devnet-1.nodes]
+alpha = { public_ip = "203.0.113.7", fqdn = "alpha.example.com" }
+"#;
+
+    /// `Inputs` falls back to `SEISMIC_CONTEXT` too; nextest gives each test
+    /// its own process, so clearing it here races no other test.
+    fn clear_context_env() {
+        // SAFETY: this process runs this one test.
+        unsafe { std::env::remove_var("SEISMIC_CONTEXT") };
+    }
+
+    /// Neither flag: the context supplies the table, the manifest, and the
+    /// network the closing step selects a node under.
+    #[test]
+    fn inputs_without_flags_come_from_the_context() {
+        clear_context_env();
+        let dir = tempfile::tempdir().unwrap();
+        let config = write_file(&dir, "config.toml", CONTEXT.as_bytes());
+        let args = parse(&[]).unwrap();
+        let inputs = Inputs::new(&args, Some(&config));
+
+        let (table, source) = inputs.table().unwrap();
+        assert_eq!(table.keys().collect::<Vec<_>>(), ["alpha"]);
+        assert_eq!(source.to_string(), "context devnet-1");
+        assert_eq!(
+            inputs.manifest().unwrap(),
+            Path::new("/nets/devnet-1/network-manifest.json")
+        );
+        assert_eq!(inputs.network().unwrap().as_deref(), Some("devnet-1"));
+    }
+
+    /// The context file is read once: rewritten mid-run, the run still sees
+    /// the first read.
+    #[test]
+    fn inputs_read_the_context_once() {
+        clear_context_env();
+        let dir = tempfile::tempdir().unwrap();
+        let config = write_file(&dir, "config.toml", CONTEXT.as_bytes());
+        let args = parse(&[]).unwrap();
+        let inputs = Inputs::new(&args, Some(&config));
+
+        inputs.manifest().unwrap();
+        std::fs::write(&config, "not toml [").unwrap();
+        assert_eq!(inputs.table().unwrap().1.to_string(), "context devnet-1");
+        assert_eq!(inputs.network().unwrap().as_deref(), Some("devnet-1"));
+    }
+
+    /// Both flags: the context is never read, so even a malformed one is no
+    /// obstacle.
+    #[test]
+    fn inputs_with_both_flags_never_read_the_context() {
+        clear_context_env();
+        let dir = tempfile::tempdir().unwrap();
+        let config = write_file(&dir, "config.toml", b"not toml [");
+        let nodes = write_file(
+            &dir,
+            "nodes.json",
+            br#"{"solo": {"public_ip": "203.0.113.9", "fqdn": "solo.example.com"}}"#,
+        );
+        let args = parse(&[
+            "--node",
+            nodes.to_str().unwrap(),
+            "--manifest",
+            "net/network-manifest.json",
+        ])
+        .unwrap();
+        let inputs = Inputs::new(&args, Some(&config));
+
+        let (table, source) = inputs.table().unwrap();
+        assert_eq!(table.keys().collect::<Vec<_>>(), ["solo"]);
+        assert_eq!(source.to_string(), format!("--node {}", nodes.display()));
+        assert_eq!(
+            inputs.manifest().unwrap(),
+            Path::new("net/network-manifest.json")
+        );
+        assert_eq!(inputs.network().unwrap(), None);
+    }
+
+    /// No context selected: each input's refusal names its own flag.
+    #[test]
+    fn inputs_with_no_context_name_the_missing_flag() {
+        clear_context_env();
+        let dir = tempfile::tempdir().unwrap();
+        // Names no file: an empty config, with no `current`.
+        let config = dir.path().join("config.toml");
+        let args = parse(&[]).unwrap();
+        let inputs = Inputs::new(&args, Some(&config));
+
+        let err = inputs.table().unwrap_err().to_string();
+        assert!(err.contains("no --node given"), "{err}");
+        assert!(err.contains("ctx use"), "{err}");
+        let err = inputs.manifest().unwrap_err().to_string();
+        assert!(err.contains("no --manifest given"), "{err}");
+        assert!(err.contains("ctx use"), "{err}");
     }
 }
