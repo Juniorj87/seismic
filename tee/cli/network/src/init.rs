@@ -201,31 +201,33 @@ pub fn fill_summit_namespace(raw: &[u8], name: &str, source: &str) -> anyhow::Re
 
 /// Gate a measurements input on carrying the id of the image it measures.
 ///
-/// The measurements file is the only binding between a network's PCR
-/// allowlist and an image: seismic-images' `make measure` stamps the versioned
-/// VHD filename into it, and promotion reads the id from there. `init` gates
-/// on the stamp so a missing one surfaces while the operator still holds loose
-/// files, not after the cohort has been provisioned and harvested. A promoted
-/// policy is a record list, each record carrying its own id.
+/// The measurements file is the only binding between a network's register
+/// allowlist and an image: seismic-images' `make measure` and `make
+/// measure-gcp` stamp the versioned artifact filename into it, and promotion
+/// reads the id from there. `init` gates on the stamp so a missing one
+/// surfaces while the operator still holds loose files, not after the cohort
+/// has been provisioned and harvested. A promoted policy is a record list,
+/// each record carrying its own id.
 pub fn require_measurement_id(raw: &[u8], source: &str) -> anyhow::Result<()> {
     let value: serde_json::Value = serde_json::from_slice(raw)
         .map_err(|e| anyhow::anyhow!("{source} is not valid JSON: {e}{}", raw_url_hint(source)))?;
     if value.is_object() && value.get("measurement_id").is_none() {
         bail!(
             "{source} carries no measurement_id — re-export the measurements with seismic-images' \
-             `make measure`, which stamps the versioned image filename these PCRs measure into \
-             the file"
+             `make measure` or `make measure-gcp`, which stamp the versioned image filename these \
+             registers measure into the file"
         );
     }
     Ok(())
 }
 
-/// Gate a measurements input on being the given image's: stamped
-/// `<image>.vhd` (or, for a promoted policy, carrying a record so stamped).
-/// The whole point of `--image-json` is that the directory names one image;
-/// measurements for some other image would leave `image.json` and the PCRs
-/// disagreeing about which.
-pub fn require_measurement_of(raw: &[u8], vhd: &str, source: &str) -> anyhow::Result<()> {
+/// Gate a measurements input on being the given image's: stamped with its
+/// artifact, `<image>.vhd` for azure-tdx or `<image>.tar.gz` for gcp-tdx (or,
+/// for a promoted policy, carrying a record so stamped). The whole point of
+/// `--image-json` is that the directory names one image; measurements for
+/// some other image would leave `image.json` and the registers disagreeing
+/// about which.
+pub fn require_measurement_of(raw: &[u8], artifact: &str, source: &str) -> anyhow::Result<()> {
     let value: serde_json::Value = serde_json::from_slice(raw)
         .map_err(|e| anyhow::anyhow!("{source} is not valid JSON: {e}{}", raw_url_hint(source)))?;
     let ids: Vec<&str> = match &value {
@@ -239,9 +241,9 @@ pub fn require_measurement_of(raw: &[u8], vhd: &str, source: &str) -> anyhow::Re
             .into_iter()
             .collect(),
     };
-    if !ids.contains(&vhd) {
+    if !ids.contains(&artifact) {
         bail!(
-            "{source} measures {}, not {vhd} — the image --image-json names; pass the \
+            "{source} measures {}, not {artifact} — the image --image-json names; pass the \
              measurements of that image, or name the image these measure",
             if ids.is_empty() {
                 "no named image".to_string()
@@ -494,7 +496,7 @@ pub struct InitArgs {
     pub reth_genesis: Option<String>,
 
     /// The image's measurements (or a promoted policy; local path or https://
-    /// URL), copied in as inputs/measurements.json — the PCRs of a real
+    /// URL), copied in as inputs/measurements.json — the registers of a real
     /// image, never generated, and stamped for the image --image-json names.
     /// Default: the image's measurements asset for --attestation-type.
     #[arg(long, value_name = "PATH_OR_URL")]
@@ -1048,7 +1050,7 @@ mod tests {
 
         // Another image's measurements beside this image's record, both
         // hashed: the stamp keeps the directory from recording one image and
-        // carrying another's PCRs.
+        // carrying another's registers.
         let mut files = release_files(TAG);
         let other = release_files("seismic_other");
         files.insert(
