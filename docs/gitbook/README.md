@@ -1,5 +1,5 @@
 ---
-description: Private by Default. Familiar by Design.
+description: A privacy enabled blockchain for fintechs.
 icon: hand-wave
 cover: .gitbook/assets/Frame 2147232569 (2).png
 coverY: 0
