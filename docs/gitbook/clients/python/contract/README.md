@@ -1,9 +1,11 @@
 ---
-description: Instantiating contracts and interacting through shielded and transparent namespaces
+description: >-
+  Instantiating contracts and interacting through shielded and transparent
+  namespaces
 icon: file-lock
 ---
 
-# Contract Instance
+# Contract
 
 ***
 
@@ -21,13 +23,13 @@ The ABI works the same as in `web3.py`. If your contract uses shielded types (`s
 
 `ShieldedContract` gives you five namespaces:
 
-| Namespace | What it does | On-chain visibility |
-|-----------|-------------|-------------------|
-| `.write` | Encrypted transaction (`TxSeismic` type `0x4a`) | Calldata encrypted |
-| `.read` | Encrypted signed `eth_call` | Calldata + result encrypted |
-| `.twrite` | Standard `eth_sendTransaction` | Calldata plaintext |
-| `.tread` | Standard `eth_call` | Calldata plaintext |
-| `.dwrite` | Debug write — like `.write` but returns plaintext + encrypted views | Calldata encrypted |
+| Namespace | What it does                                                        | On-chain visibility         |
+| --------- | ------------------------------------------------------------------- | --------------------------- |
+| `.write`  | Encrypted transaction (`TxSeismic` type `0x4a`)                     | Calldata encrypted          |
+| `.read`   | Encrypted signed `eth_call`                                         | Calldata + result encrypted |
+| `.twrite` | Standard `eth_sendTransaction`                                      | Calldata plaintext          |
+| `.tread`  | Standard `eth_call`                                                 | Calldata plaintext          |
+| `.dwrite` | Debug write — like `.write` but returns plaintext + encrypted views | Calldata encrypted          |
 
 ```python
 # Shielded write — encrypted calldata, returns tx hash
@@ -97,7 +99,7 @@ Token examples use the real [SRC20](https://github.com/SeismicSystems/src20) / E
 
 ### Encoding calldata manually
 
-If you need to encode calldata outside of a contract call — for example, to pass it to the [low-level API](../guides/shielded-write.md#low-level-api) — you can use [`encode_shielded_calldata`](../namespaces/methods/encode-shielded-calldata.md). This computes the function selector using the original shielded type names (like `suint256`) but encodes the parameters using standard types (like `uint256`):
+If you need to encode calldata outside of a contract call — for example, to pass it to the [low-level API](../guides/shielded-write.md#low-level-api) — you can use [`encode_shielded_calldata`](https://github.com/SeismicSystems/seismic/blob/main/docs/gitbook/clients/python/namespaces/methods/encode-shielded-calldata.md). This computes the function selector using the original shielded type names (like `suint256`) but encodes the parameters using standard types (like `uint256`):
 
 ```python
 from seismic_web3.contract.abi import encode_shielded_calldata

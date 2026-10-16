@@ -20,7 +20,7 @@ For each transaction the client uses a secp256k1 encryption keypair to encrypt c
 ### Axis 1 — Rotation frequency
 
 * **Per-tx (ephemeral)** — fresh keypair per tx, discarded after submission. Each tx has its own AES key, so the `encryptionNonce` can be a fixed constant (the reference clients use all-zeros). Strongest forward deniability — the client itself cannot recover past plaintext once the key is discarded. No offline self-decryption: wallets wanting to view tx history must cache the key per tx
-* **Long-lived (per-session or longer)** — same keypair reused across many txs. The `encryptionNonce` **must** be unique per tx under this key (incrementing counter or random 12-byte value; birthday-bound at ~2⁴⁸ random nonces) — same AES key + same nonce breaks AES-GCM. Enables offline self-decryption: the client recomputes `K` once and decrypts any past tx
+* **Long-lived (per-session or longer)** — same keypair reused across many txs. The `encryptionNonce` **must** be unique per tx under this key (incrementing counter or random 12-byte value; birthday-bound at \~2⁴⁸ random nonces) — same AES key + same nonce breaks AES-GCM. Enables offline self-decryption: the client recomputes `K` once and decrypts any past tx
 
 ### Axis 2 — Key source
 
@@ -30,10 +30,10 @@ For each transaction the client uses a secp256k1 encryption keypair to encrypt c
 
 ### Common combinations
 
-* **Ephemeral × random** — recommended default, used by the seismic-viem and seismic_web3 reference clients. Privacy-maxing; no self-decryption without explicit per-tx caching
+* **Ephemeral × random** — recommended default, used by the seismic-viem and seismic\_web3 reference clients. Privacy-maxing; no self-decryption without explicit per-tx caching
 * **Ephemeral × derived (direct)** — fresh keypair per tx, deterministically derived from `signing_sk`. Combines "no separate backup" with "fresh K per tx (no nonce-reuse concern)." Suitable when the dApp has direct access to `signing_sk`
 * **Long-lived × random** — single CSPRNG key reused. Enables offline self-decryption; the encryption key must be backed up separately from the wallet seed
-* **Long-lived × signature-derived** — single key derived from one wallet signature at session start. **Used by the [Fireblocks SDK](https://github.com/fireblocks/seismic-sdk)**: signs a fixed seed via Fireblocks RAW signing, hashes the signature into a session-scoped encryption key. Re-derives on session restart without user re-approval (MPC signatures are deterministic); no out-of-band backup needed — the wallet covers both signing and encryption
+* **Long-lived × signature-derived** — single key derived from one wallet signature at session start. **Used by the** [**Fireblocks SDK**](https://github.com/fireblocks/seismic-sdk): signs a fixed seed via Fireblocks RAW signing, hashes the signature into a session-scoped encryption key. Re-derives on session restart without user re-approval (MPC signatures are deterministic); no out-of-band backup needed — the wallet covers both signing and encryption
 
 Other combinations (e.g., per-tx × signature-derived, which would require a wallet-signature prompt per tx) are valid but operationally rare.
 
@@ -92,5 +92,5 @@ All implementations produce byte-identical ciphertexts for the same inputs on th
 
 * **Rust (ECIES primitive):** [`enclave/crates/enclave/src/crypto.rs`](https://github.com/SeismicSystems/enclave/tree/seismic/crates/enclave/src/crypto.rs) in the [`seismic-enclave`](https://github.com/SeismicSystems/enclave) crate. This is the source-of-truth Rust implementation, used by both the client side (via `seismic-alloy`) and the server side (via `seismic-enclave-server`)
 * **Rust (TxSeismic wire format + tx construction):** [`seismic-alloy/crates/consensus`](https://github.com/SeismicSystems/seismic-alloy/tree/seismic/crates/consensus) — depends on `seismic-enclave` for the ECIES math
-* **Python:** [`clients/py/src/seismic_web3/crypto/ecdh.py`](https://github.com/SeismicSystems/seismic/tree/main/clients/py/src/seismic_web3/crypto/ecdh.py) — independent reimplementation; matches the Rust shared-secret derivation by construction
-* **TypeScript:** [`clients/ts/`](https://github.com/SeismicSystems/seismic/tree/main/clients/ts) — independent reimplementation
+* **Python:** [`clients/py/src/seismic_web3/crypto/ecdh.py`](../../../../clients/py/src/seismic_web3/crypto/ecdh.py) — independent reimplementation; matches the Rust shared-secret derivation by construction
+* **TypeScript:** [`clients/ts/`](../../../../clients/ts/) — independent reimplementation

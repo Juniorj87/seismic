@@ -1,9 +1,7 @@
 ---
 description: Private by Default. Familiar by Design.
 icon: hand-wave
-cover:
-  light: .gitbook/assets/light.png
-  dark: .gitbook/assets/dark.png
+cover: .gitbook/assets/Frame 2147232569 (2).png
 coverY: 0
 ---
 
