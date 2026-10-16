@@ -7,11 +7,15 @@ cover:
 coverY: 0
 ---
 
-# Welcome to Seismic!
+# Welcome
+
+{% hint style="info" %}
+This docsite is focused on the Seismic Blockchain. If you'd like to learn about virtual accounts and payout rails, please reference the dedicated [Seismic Orchestration](https://orchestration.seismic.systems/docs/) site instead.
+{% endhint %}
 
 **Seismic is an EVM blockchain with native on-chain privacy.** Write Solidity. Deploy with Foundry. Interact with Viem. The only difference: your users' data stays private.
 
----
+***
 
 ### One letter changes everything
 
@@ -39,16 +43,16 @@ function transfer(address to, suint256 amount) public {  // uint256 → suint256
 
 The `s` prefix tells the Seismic compiler to shield the underlying value. Observers see `0x00...0` instead of actual balances and amounts. Everything else — the Solidity syntax, the EVM execution model, the deployment flow — stays exactly the same.
 
----
+***
 
 ### What you can build
 
-- **Shielded tokens** — ERC20s where balances and transfer amounts are hidden from observers
-- **Confidential DeFi** — AMMs and lending protocols where positions, prices, and liquidation thresholds are shielded
-- **Compliant finance** — Privacy with built-in access control so regulators can verify without exposing user data
-- **Private voting** — On-chain governance where votes are secret until tallied
+* **Shielded tokens** — ERC20s where balances and transfer amounts are hidden from observers
+* **Confidential DeFi** — AMMs and lending protocols where positions, prices, and liquidation thresholds are shielded
+* **Compliant finance** — Privacy with built-in access control so regulators can verify without exposing user data
+* **Private voting** — On-chain governance where votes are secret until tallied
 
----
+***
 
 ### 3-minute quickstart
 
@@ -62,7 +66,7 @@ sforge test -vv
 
 You just ran shielded contract tests locally. See the [full quickstart](getting-started/quickstart.md) for next steps.
 
----
+***
 
 ### Find what you need
 
@@ -73,26 +77,26 @@ You just ran shielded contract tests locally. See the [full quickstart](getting-
 | Set up my dev environment            | [Installation](getting-started/installation.md)                                                  |
 | Run my first shielded contract       | [Quickstart](getting-started/quickstart.md)                                                      |
 | Build a complete app step by step    | [Clown Beatdown Tutorial](tutorials/clown-beatdown/understanding-the-clown-beatdown-contract.md) |
-| Build a shielded ERC20 token         | [SRC20 Tutorial](tutorials/src20/README.md)                                                      |
+| Build a shielded ERC20 token         | [SRC20 Tutorial](tutorials/src20/)                                                               |
 | Learn about shielded types           | [Shielded Types](seismic-solidity/shielded-types.md)                                             |
-| Integrate a frontend                 | [Client Libraries](clients/README.md)                                                            |
+| Integrate a frontend                 | [Client Libraries](clients/)                                                                     |
 | Deploy to testnet                    | [Migrating from Ethereum](reference/migrating-from-ethereum.md)                                  |
-| Understand the transaction lifecycle | [Seismic Transaction](reference/seismic-transaction/README.md)                                   |
+| Understand the transaction lifecycle | [Seismic Transaction](reference/seismic-transaction/)                                            |
 | Run a node                           | [Node Operator FAQ](reference/node-operator-faq.md)                                              |
 
----
+***
 
 ### Pre-requisite knowledge
 
 Our documentation assumes some familiarity with blockchain app development. Before getting started, it'll help if you're comfortable with:
 
-- [Solidity](https://www.soliditylang.org/)
-- [Foundry](https://getfoundry.sh/)
-- [Viem](https://viem.sh/)
+* [Solidity](https://www.soliditylang.org/)
+* [Foundry](https://getfoundry.sh/)
+* [Viem](https://viem.sh/)
 
 If you're new to blockchain app development or need a refresher, we recommend starting out with the [CryptoZombies](https://cryptozombies.io/en/course) tutorial.
 
----
+***
 
 ### Work with us
 
